@@ -2,6 +2,12 @@ name: Docker Image Test
 
 on:
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      image:
+        description: 'Published image to smoke test, e.g. ghcr.io/mapproxy/mapproxy/mapproxy:7.0.0. Empty builds from source.'
+        type: string
+        default: ''
   push:
     branches:
       - master
@@ -25,6 +31,8 @@ concurrency:
 jobs:
   docker-test:
     runs-on: ubuntu-24.04
+    env:
+      IMAGE: ${{ inputs.image != '' && format('{0}{1}', inputs.image, matrix.tag_suffix) || format('mapproxy-{0}:test', matrix.name) }}
     strategy:
       matrix:
         include:
@@ -32,21 +40,25 @@ jobs:
             target: development
             port: 8080
             name: mapproxy-development
+            tag_suffix: '-dev'
             test_path: /demo/
           - dockerfile: Dockerfile
             target: nginx
             port: 9090
             name: mapproxy-nginx
+            tag_suffix: '-nginx'
             test_path: /mapproxy/demo/
           - dockerfile: Dockerfile-alpine
             target: development
             port: 8080
             name: mapproxy-alpine-development
+            tag_suffix: '-alpine-dev'
             test_path: /demo/
           - dockerfile: Dockerfile-alpine
             target: nginx
             port: 9090
             name: mapproxy-alpine-nginx
+            tag_suffix: '-alpine-nginx'
             test_path: /mapproxy/demo/
 
     steps:
@@ -54,15 +66,21 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Build Docker image (${{ matrix.name }})
+        if: ${{ inputs.image == '' }}
         run: |
           docker build -f ${{ matrix.dockerfile }} --target ${{ matrix.target }} -t mapproxy-${{ matrix.name }}:test .
+
+      - name: Pull published image (${{ matrix.name }})
+        if: ${{ inputs.image != '' }}
+        run: |
+          docker pull "$IMAGE"
 
       - name: Start container
         run: |
           docker run -d --name mapproxy-test \
             -p ${{ matrix.port }}:${{ matrix.port }} \
             -v ${{ github.workspace }}/docker/mapproxy-example.yaml:/mapproxy/config/mapproxy.yaml \
-            mapproxy-${{ matrix.name }}:test
+            "$IMAGE"
           sleep 5
 
       - name: Check container is running

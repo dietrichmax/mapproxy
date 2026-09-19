@@ -134,6 +134,17 @@ jobs:
           tags: ${{ needs.get-version.outputs.version }}-alpine-nginx
           platforms: linux/amd64,linux/arm64
 
+  smoke-test:
+    needs:
+      - get-version
+      - build-and-publish-ubuntu
+      - build-and-publish-alpine
+    permissions:
+      contents: read
+    uses: ./.github/workflows/docker-test.yml
+    with:
+      image: ${{ needs.get-version.outputs.version }}
+
   run-trivy:
     needs:
       - get-version
